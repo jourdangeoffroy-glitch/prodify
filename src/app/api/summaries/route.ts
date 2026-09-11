@@ -4,13 +4,11 @@ import { generateSummary, NoFeedbackInPeriodError } from "@/lib/summarize";
 import { GeminiApiError, GeminiNotConfiguredError } from "@/lib/gemini";
 
 export async function GET() {
-  const db = getDb();
-  const rows = db
-    .prepare(
-      "SELECT id, period_start, period_end, source_filter, summary_text, feedback_count, generated_at FROM summaries ORDER BY generated_at DESC"
-    )
-    .all();
-  return NextResponse.json({ summaries: rows });
+  const db = await getDb();
+  const result = await db.execute(
+    "SELECT id, period_start, period_end, source_filter, summary_text, feedback_count, generated_at FROM summaries ORDER BY generated_at DESC"
+  );
+  return NextResponse.json({ summaries: result.rows });
 }
 
 export async function POST(req: NextRequest) {

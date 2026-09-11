@@ -3,17 +3,16 @@ import { getDb } from "./db";
 const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.0-flash";
 const GEMINI_ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
 
-export function getGeminiApiKey(): string | null {
+export async function getGeminiApiKey(): Promise<string | null> {
   if (process.env.GEMINI_API_KEY) return process.env.GEMINI_API_KEY;
-  const db = getDb();
-  const row = db
-    .prepare("SELECT value FROM app_settings WHERE key = 'gemini_api_key'")
-    .get() as { value: string } | undefined;
+  const db = await getDb();
+  const result = await db.execute("SELECT value FROM app_settings WHERE key = 'gemini_api_key'");
+  const row = result.rows[0] as unknown as { value: string } | undefined;
   return row?.value ?? null;
 }
 
-export function isGeminiConfigured(): boolean {
-  return !!getGeminiApiKey();
+export async function isGeminiConfigured(): Promise<boolean> {
+  return !!(await getGeminiApiKey());
 }
 
 export class GeminiNotConfiguredError extends Error {
@@ -37,7 +36,7 @@ export class GeminiApiError extends Error {
  * C'est l'appel réseau réel décrit dans la fonctionnalité 2 du prompt PRODIFY.
  */
 export async function callGemini(prompt: string): Promise<string> {
-  const apiKey = getGeminiApiKey();
+  const apiKey = await getGeminiApiKey();
   if (!apiKey) throw new GeminiNotConfiguredError();
 
   let response: Response;

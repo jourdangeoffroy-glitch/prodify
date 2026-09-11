@@ -2,14 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 
 export async function GET(req: NextRequest) {
-  const db = getDb();
+  const db = await getDb();
   const { searchParams } = new URL(req.url);
 
-  const rows = db
-    .prepare(
-      "SELECT id, source, external_id, content, author_email, created_at_source, ingested_at, tags FROM feedbacks ORDER BY ingested_at DESC LIMIT 500"
-    )
-    .all() as Array<{
+  const result = await db.execute(
+    "SELECT id, source, external_id, content, author_email, created_at_source, ingested_at, tags FROM feedbacks ORDER BY ingested_at DESC LIMIT 500"
+  );
+  const rows = result.rows as unknown as Array<{
     id: string;
     source: string;
     external_id: string | null;

@@ -25,25 +25,25 @@ export class NoFeedbackInPeriodError extends Error {
   }
 }
 
-function fetchFeedbacks(input: GenerateSummaryInput): FeedbackRow[] {
-  const db = getDb();
+async function fetchFeedbacks(input: GenerateSummaryInput): Promise<FeedbackRow[]> {
+  const db = await getDb();
   if (input.sources && input.sources.length > 0) {
     const placeholders = input.sources.map(() => "?").join(",");
-    return db
-      .prepare(
-        `SELECT id, source, content, created_at_source FROM feedbacks
-         WHERE created_at_source BETWEEN ? AND ? AND source IN (${placeholders})
-         ORDER BY created_at_source ASC`
-      )
-      .all(input.periodStart, input.periodEnd, ...input.sources) as FeedbackRow[];
+    const result = await db.execute({
+      sql: `SELECT id, source, content, created_at_source FROM feedbacks
+            WHERE created_at_source BETWEEN ? AND ? AND source IN (${placeholders})
+            ORDER BY created_at_source ASC`,
+      args: [input.periodStart, input.periodEnd, ...input.sources],
+    });
+    return result.rows as unknown as FeedbackRow[];
   }
-  return getDb()
-    .prepare(
-      `SELECT id, source, content, created_at_source FROM feedbacks
-       WHERE created_at_source BETWEEN ? AND ?
-       ORDER BY created_at_source ASC`
-    )
-    .all(input.periodStart, input.periodEnd) as FeedbackRow[];
+  const result = await db.execute({
+    sql: `SELECT id, source, content, created_at_source FROM feedbacks
+          WHERE created_at_source BETWEEN ? AND ?
+          ORDER BY created_at_source ASC`,
+    args: [input.periodStart, input.periodEnd],
+  });
+  return result.rows as unknown as FeedbackRow[];
 }
 
 // Anonymisation : author_email n'est jamais inclus dans le payload envoyé au LLM.
@@ -79,7 +79,7 @@ si pertinente).`;
 }
 
 export async function generateSummary(input: GenerateSummaryInput) {
-  const rows = fetchFeedbacks(input);
+  const rows = await fetchFeedbacks(input);
   if (rows.length === 0) throw new NoFeedbackInPeriodError();
 
   const multiSource = !input.sources || input.sources.length > 1;
@@ -99,21 +99,22 @@ export async function generateSummary(input: GenerateSummaryInput) {
     summaryText = await callGemini(buildHierarchicalPrompt(batchSummaries));
   }
 
-  const db = getDb();
+  const db = await getDb();
   const id = uuid();
   const generatedAt = new Date().toISOString();
-  db.prepare(
-    `INSERT INTO summaries (id, period_start, period_end, source_filter, summary_text, feedback_count, generated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`
-  ).run(
-    id,
-    input.periodStart,
-    input.periodEnd,
-    input.sources ? JSON.stringify(input.sources) : null,
-    summaryText,
-    rows.length,
-    generatedAt
-  );
+  await db.execute({
+    sql: `INSERT INTO summaries (id, period_start, period_end, source_filter, summary_text, feedback_count, generated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    args: [
+      id,
+      input.periodStart,
+      input.periodEnd,
+      input.sources ? JSON.stringify(input.sources) : null,
+      summaryText,
+      rows.length,
+      generatedAt,
+    ],
+  });
 
   return {
     id,

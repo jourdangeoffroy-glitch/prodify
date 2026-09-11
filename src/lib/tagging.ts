@@ -26,12 +26,14 @@ function computeAutoTags(feedback: {
  * Ne doit jamais faire échouer l'insertion : toute erreur est loggée dans
  * tagging_errors pour audit, le feedback brut reste en base tel quel.
  */
-export function tagFeedback(feedbackId: string): void {
-  const db = getDb();
+export async function tagFeedback(feedbackId: string): Promise<void> {
+  const db = await getDb();
   try {
-    const row = db
-      .prepare("SELECT source, ingested_at, tags FROM feedbacks WHERE id = ?")
-      .get(feedbackId) as
+    const result = await db.execute({
+      sql: "SELECT source, ingested_at, tags FROM feedbacks WHERE id = ?",
+      args: [feedbackId],
+    });
+    const row = result.rows[0] as unknown as
       | { source: string; ingested_at: string; tags: string }
       | undefined;
     if (!row) throw new Error("feedback introuvable");
@@ -40,16 +42,14 @@ export function tagFeedback(feedbackId: string): void {
     const autoTags = computeAutoTags(row);
     const merged: Tags = { ...existingTags, ...autoTags };
 
-    db.prepare("UPDATE feedbacks SET tags = ? WHERE id = ?").run(
-      JSON.stringify(merged),
-      feedbackId
-    );
+    await db.execute({
+      sql: "UPDATE feedbacks SET tags = ? WHERE id = ?",
+      args: [JSON.stringify(merged), feedbackId],
+    });
   } catch (err) {
-    const db2 = getDb();
-    db2
-      .prepare(
-        "INSERT INTO tagging_errors (id, feedback_id, error, created_at) VALUES (?, ?, ?, ?)"
-      )
-      .run(uuid(), feedbackId, String(err), new Date().toISOString());
+    await db.execute({
+      sql: "INSERT INTO tagging_errors (id, feedback_id, error, created_at) VALUES (?, ?, ?, ?)",
+      args: [uuid(), feedbackId, String(err), new Date().toISOString()],
+    });
   }
 }

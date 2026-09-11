@@ -14,7 +14,7 @@ export async function POST(req: NextRequest) {
   const buffer = Buffer.from(await file.arrayBuffer());
 
   try {
-    const report = importCsv(buffer);
+    const report = await importCsv(buffer);
     return NextResponse.json(report);
   } catch (err) {
     if (err instanceof CsvRejectedError) {

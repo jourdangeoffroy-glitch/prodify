@@ -50,7 +50,7 @@ function isValidDate(value: string): boolean {
   return !Number.isNaN(d.getTime());
 }
 
-export function importCsv(buffer: Buffer): ImportReport {
+export async function importCsv(buffer: Buffer): Promise<ImportReport> {
   if (buffer.length === 0) {
     throw new CsvRejectedError("Le fichier est vide.");
   }
@@ -98,25 +98,16 @@ export function importCsv(buffer: Buffer): ImportReport {
     throw new CsvRejectedError(`Colonne(s) inconnue(s) dans le header : ${unknown.join(", ")}.`);
   }
 
-  const db = getDb();
-  const findByExternalId = db.prepare(
-    "SELECT id FROM feedbacks WHERE source = ? AND external_id = ?"
-  );
-  const findByContent = db.prepare(
-    "SELECT id FROM feedbacks WHERE source = ? AND content = ? AND created_at_source = ?"
-  );
-  const insert = db.prepare(`
-    INSERT INTO feedbacks (id, source, external_id, content, author_email, created_at_source, ingested_at, raw_row, tags)
-    VALUES (@id, @source, @external_id, @content, @author_email, @created_at_source, @ingested_at, @raw_row, '{}')
-  `);
-
+  const db = await getDb();
   const errors: ImportRowError[] = [];
   let inserted = 0;
   let duplicates = 0;
   const insertedIds: string[] = [];
 
-  const tx = db.transaction(() => {
-    records.forEach((row, idx) => {
+  const tx = await db.transaction();
+  try {
+    for (let idx = 0; idx < records.length; idx++) {
+      const row = records[idx];
       const line = idx + 1;
       const source = row.source?.trim();
       const content = row.content?.trim();
@@ -130,62 +121,70 @@ export function importCsv(buffer: Buffer): ImportReport {
           line,
           reason: `source invalide ou manquante ("${source ?? ""}"). Attendu : ${VALID_SOURCES.join(", ")}.`,
         });
-        return;
+        continue;
       }
       if (!content) {
         errors.push({ line, reason: "content manquant." });
-        return;
+        continue;
       }
       if (!createdAtSource || !isValidDate(createdAtSource)) {
         errors.push({
           line,
           reason: `created_at_source invalide ("${createdAtSource ?? ""}"). Format attendu : YYYY-MM-DD.`,
         });
-        return;
+        continue;
       }
       if (authorEmail && !EMAIL_RE.test(authorEmail)) {
         errors.push({ line, reason: `author_email invalide ("${authorEmail}").` });
-        return;
+        continue;
       }
 
       const existing = externalId
-        ? findByExternalId.get(source, externalId)
-        : findByContent.get(source, content, createdAtSource);
-      if (existing) {
+        ? await tx.execute({
+            sql: "SELECT id FROM feedbacks WHERE source = ? AND external_id = ?",
+            args: [source, externalId],
+          })
+        : await tx.execute({
+            sql: "SELECT id FROM feedbacks WHERE source = ? AND content = ? AND created_at_source = ?",
+            args: [source, content, createdAtSource],
+          });
+      if (existing.rows.length > 0) {
         duplicates += 1;
-        return;
+        continue;
       }
 
       const id = uuid();
       const ingestedAt = new Date().toISOString();
       const tags = segment ? { segment } : {};
 
-      insert.run({
-        id,
-        source,
-        external_id: externalId,
-        content,
-        author_email: authorEmail,
-        created_at_source: createdAtSource,
-        ingested_at: ingestedAt,
-        raw_row: JSON.stringify(row),
-      });
-      if (segment) {
-        db.prepare("UPDATE feedbacks SET tags = ? WHERE id = ?").run(
+      await tx.execute({
+        sql: `INSERT INTO feedbacks (id, source, external_id, content, author_email, created_at_source, ingested_at, raw_row, tags)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        args: [
+          id,
+          source,
+          externalId,
+          content,
+          authorEmail,
+          createdAtSource,
+          ingestedAt,
+          JSON.stringify(row),
           JSON.stringify(tags),
-          id
-        );
-      }
+        ],
+      });
       insertedIds.push(id);
       inserted += 1;
-    });
-  });
-  tx();
+    }
+    await tx.commit();
+  } catch (err) {
+    await tx.rollback();
+    throw err;
+  }
 
   // Tagging automatique (fonctionnalité 3), après commit : ne doit jamais faire
   // échouer l'import lui-même — les erreurs de tagging sont isolées par feedback.
   for (const id of insertedIds) {
-    tagFeedback(id);
+    await tagFeedback(id);
   }
 
   return { inserted, duplicates, errors, totalRows: records.length };
