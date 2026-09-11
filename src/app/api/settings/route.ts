@@ -1,9 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { isGeminiConfigured } from "@/lib/gemini";
+import { toErrorResponse } from "@/lib/apiError";
 
 export async function GET() {
-  return NextResponse.json({ configured: await isGeminiConfigured() });
+  try {
+    return NextResponse.json({ configured: await isGeminiConfigured() });
+  } catch (err) {
+    return toErrorResponse(err);
+  }
 }
 
 export async function POST(req: NextRequest) {
@@ -13,13 +18,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Clé API vide." }, { status: 400 });
   }
 
-  const db = await getDb();
-  await db.execute({
-    sql: `INSERT INTO app_settings (key, value) VALUES ('gemini_api_key', ?)
-          ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
-    args: [apiKey],
-  });
+  try {
+    const db = await getDb();
+    await db.execute({
+      sql: `INSERT INTO app_settings (key, value) VALUES ('gemini_api_key', ?)
+            ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+      args: [apiKey],
+    });
 
-  // La valeur n'est jamais renvoyée au frontend, uniquement l'état booléen.
-  return NextResponse.json({ configured: true });
+    // La valeur n'est jamais renvoyée au frontend, uniquement l'état booléen.
+    return NextResponse.json({ configured: true });
+  } catch (err) {
+    return toErrorResponse(err);
+  }
 }

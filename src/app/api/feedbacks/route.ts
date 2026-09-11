@@ -1,37 +1,42 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
+import { toErrorResponse } from "@/lib/apiError";
 
 export async function GET(req: NextRequest) {
-  const db = await getDb();
-  const { searchParams } = new URL(req.url);
+  try {
+    const db = await getDb();
+    const { searchParams } = new URL(req.url);
 
-  const result = await db.execute(
-    "SELECT id, source, external_id, content, author_email, created_at_source, ingested_at, tags FROM feedbacks ORDER BY ingested_at DESC LIMIT 500"
-  );
-  const rows = result.rows as unknown as Array<{
-    id: string;
-    source: string;
-    external_id: string | null;
-    content: string;
-    author_email: string | null;
-    created_at_source: string;
-    ingested_at: string;
-    tags: string;
-  }>;
+    const result = await db.execute(
+      "SELECT id, source, external_id, content, author_email, created_at_source, ingested_at, tags FROM feedbacks ORDER BY ingested_at DESC LIMIT 500"
+    );
+    const rows = result.rows as unknown as Array<{
+      id: string;
+      source: string;
+      external_id: string | null;
+      content: string;
+      author_email: string | null;
+      created_at_source: string;
+      ingested_at: string;
+      tags: string;
+    }>;
 
-  // Filtre par tags combinés : ?tag_channel_type=support&tag_segment=enterprise
-  const tagFilters: Record<string, string> = {};
-  for (const [key, value] of searchParams.entries()) {
-    if (key.startsWith("tag_")) tagFilters[key.slice(4)] = value;
+    // Filtre par tags combinés : ?tag_channel_type=support&tag_segment=enterprise
+    const tagFilters: Record<string, string> = {};
+    for (const [key, value] of searchParams.entries()) {
+      if (key.startsWith("tag_")) tagFilters[key.slice(4)] = value;
+    }
+
+    const parsed = rows.map((r) => ({ ...r, tags: JSON.parse(r.tags || "{}") }));
+    const filtered =
+      Object.keys(tagFilters).length === 0
+        ? parsed
+        : parsed.filter((r) =>
+            Object.entries(tagFilters).every(([k, v]) => r.tags[k] === v)
+          );
+
+    return NextResponse.json({ feedbacks: filtered });
+  } catch (err) {
+    return toErrorResponse(err);
   }
-
-  const parsed = rows.map((r) => ({ ...r, tags: JSON.parse(r.tags || "{}") }));
-  const filtered =
-    Object.keys(tagFilters).length === 0
-      ? parsed
-      : parsed.filter((r) =>
-          Object.entries(tagFilters).every(([k, v]) => r.tags[k] === v)
-        );
-
-  return NextResponse.json({ feedbacks: filtered });
 }

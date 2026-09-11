@@ -2,13 +2,18 @@ import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { generateSummary, NoFeedbackInPeriodError } from "@/lib/summarize";
 import { GeminiApiError, GeminiNotConfiguredError } from "@/lib/gemini";
+import { toErrorResponse } from "@/lib/apiError";
 
 export async function GET() {
-  const db = await getDb();
-  const result = await db.execute(
-    "SELECT id, period_start, period_end, source_filter, summary_text, feedback_count, generated_at FROM summaries ORDER BY generated_at DESC"
-  );
-  return NextResponse.json({ summaries: result.rows });
+  try {
+    const db = await getDb();
+    const result = await db.execute(
+      "SELECT id, period_start, period_end, source_filter, summary_text, feedback_count, generated_at FROM summaries ORDER BY generated_at DESC"
+    );
+    return NextResponse.json({ summaries: result.rows });
+  } catch (err) {
+    return toErrorResponse(err);
+  }
 }
 
 export async function POST(req: NextRequest) {

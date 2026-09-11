@@ -10,9 +10,18 @@ export default function ReglagesPage() {
 
   const loadStatus = () => {
     fetch("/api/settings")
-      .then((r) => r.json())
+      .then(async (r) => {
+        const data = await r.json().catch(() => null);
+        if (!r.ok || !data) throw new Error(data?.error || `Erreur serveur (${r.status}).`);
+        return data;
+      })
       .then((d) => setConfigured(d.configured))
-      .catch(() => setError("Impossible de charger l'état de configuration."));
+      .catch((err) => {
+        setConfigured(false);
+        setError(
+          `Impossible de charger l'état de configuration : ${err instanceof Error ? err.message : String(err)}`
+        );
+      });
   };
 
   useEffect(loadStatus, []);
