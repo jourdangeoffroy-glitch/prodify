@@ -1,6 +1,8 @@
 import { getDb } from "./db";
 
-const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.0-flash";
+// Google retire régulièrement ses anciens modèles : surchargeable par la variable
+// d'environnement GEMINI_MODEL, sans changement de code.
+const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-3.6-flash";
 const GEMINI_ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
 
 export async function getGeminiApiKey(): Promise<string | null> {
@@ -71,6 +73,13 @@ export async function callGemini(prompt: string): Promise<string> {
     throw new GeminiApiError(
       `Clé API Gemini invalide ou requête rejetée (400) : ${body.slice(0, 200)}`,
       400
+    );
+  }
+  if (response.status === 404) {
+    const body = await response.text();
+    throw new GeminiApiError(
+      `Le modèle "${GEMINI_MODEL}" n'est pas disponible sur cette clé API. Définissez la variable d'environnement GEMINI_MODEL avec un modèle valide. Réponse de Google : ${body.slice(0, 300)}`,
+      404
     );
   }
   if (!response.ok) {
