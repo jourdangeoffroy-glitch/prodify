@@ -1,7 +1,7 @@
 # PRODIFY — prototype
 
 Prototype MVP (Next.js + SQLite/libSQL) des 3 fonctionnalités décrites dans le prompt PRODIFY :
-1. Import CSV de feedbacks (`/feedbacks`)
+1. Import CSV de feedbacks (`/importer`)
 2. Résumé automatique par LLM Gemini (`/resumes`) — nécessite une clé API
 3. Tagging automatique par source (appliqué à l'import, visible sur `/feedbacks`)
 
@@ -43,7 +43,7 @@ invocation serverless repartirait d'une base vide.
 
 1. Récupérer une clé API gratuite sur https://aistudio.google.com
 2. Aller sur `/reglages`, coller la clé, cliquer "Enregistrer"
-3. Aller sur `/feedbacks`, importer un CSV (voir format ci-dessous)
+3. Aller sur `/importer`, importer un CSV (voir format ci-dessous)
 4. Aller sur `/resumes`, choisir une période couvrant les feedbacks importés, cliquer
    "Générer le résumé" → l'appel réseau réel vers l'API Gemini est déclenché ici
 
